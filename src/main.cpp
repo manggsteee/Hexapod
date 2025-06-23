@@ -1,12 +1,7 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <Adafruit_PWMServoDriver.h>
-
-// Constants
-#define SERVO_MIN 150
-#define SERVO_MAX 600
-#define SERVO_FREQ 50
-#define ANGLE_INCREMENT 5
+#include "hexapod.h"
 
 // PCA9685 drivers
 Adafruit_PWMServoDriver pca1 = Adafruit_PWMServoDriver(0x40);
@@ -27,15 +22,8 @@ enum InputState {
 InputState inputState = SELECT_PCA;
 String inputBuffer = "";
 
-// Define leg servo configurations (pca_index, hip, knee, ankle)
-struct LegServos {
-  uint8_t pcaIndex;
-  uint8_t hip;
-  uint8_t knee;
-  uint8_t ankle;
-};
-
 // Define servo indexes for each leg
+// LegServos đã được định nghĩa trong hexapod.h, không cần định nghĩa lại
 const LegServos leg1 = {0, 0, 1, 2};    // Leg 1 (PCA1)
 const LegServos leg2 = {0, 4, 5, 6};    // Leg 2 (PCA1)
 const LegServos leg3 = {0, 8, 9, 10};   // Leg 3 (PCA1)
@@ -44,12 +32,12 @@ const LegServos leg5 = {1, 4, 5, 6};    // Leg 5 (PCA2)
 const LegServos leg6 = {1, 8, 9, 10};   // Leg 6 (PCA2)
 
 // Home position angles for each leg (from your provided values)
-const float leg1Home[3] = {70, 60, 20};   // Hip, knee, ankle for leg1
-const float leg2Home[3] = {95, 20, 140};  // Hip, knee, ankle for leg2
-const float leg3Home[3] = {110, 65, 70};  // Hip, knee, ankle for leg3
-const float leg4Home[3] = {50, 65, 65};   // Hip, knee, ankle for leg4
-const float leg5Home[3] = {75, 85, 50};   // Hip, knee, ankle for leg5
-const float leg6Home[3] = {85, 120, 60};  // Hip, knee, ankle for leg6
+const float leg1Home[3] = {90, 125, 65};   // Hip, knee, ankle for leg1
+const float leg2Home[3] = {80, 85, 55};    // Hip, knee, ankle for leg2
+const float leg3Home[3] = {75, 60, 70};    // Hip, knee, ankle for leg3
+const float leg4Home[3] = {95, 65, 65};    // Hip, knee, ankle for leg4
+const float leg5Home[3] = {80, 20, 135};   // Hip, knee, ankle for leg5
+const float leg6Home[3] = {55, 70, 15};    // Hip, knee, ankle for leg6
 
 /**
  * @brief Sets a single servo to a specified angle
@@ -83,11 +71,11 @@ void setServoAngle(uint8_t pcaIndex, uint8_t servoIndex, float angle) {
 void controlLeg(const LegServos &leg, float hipAngle, float kneeAngle, float ankleAngle) {
     // Set all servo angles with minimal delay between movements
     setServoAngle(leg.pcaIndex, leg.hip, hipAngle);
-    delay(1000);
+    delay(500);
     setServoAngle(leg.pcaIndex, leg.knee, kneeAngle);
-    delay(1000);
+    delay(500);
     setServoAngle(leg.pcaIndex, leg.ankle, ankleAngle);
-    delay(1000);
+    delay(500);
     Serial.print("Leg controlled: Hip=");
     Serial.print(hipAngle);
     Serial.print("° Knee=");
@@ -124,21 +112,42 @@ void scanI2CDevices() {
 /**
  * @brief Sets all legs to the home position using your custom values
  */
+/**
+ * @brief Sets all legs to the home position using your custom values
+ * Activates all ankles first, then hips, then knees
+ */
 void homePosition() {
   Serial.println("Setting legs to custom home position");
   
-  // Set each leg to its home position
-  // controlLeg(leg1, leg1Home[0], leg1Home[1], leg1Home[2]);
-  // delay(2000);
-  // controlLeg(leg2, leg2Home[0], leg2Home[1], leg2Home[2]);
-  //   delay(2000);
-  // controlLeg(leg3, leg3Home[0], leg3Home[1], leg3Home[2]);
-    // delay(2000);
-  // controlLeg(leg4, leg4Home[0], leg4Home[1], leg4Home[2]);
-  //   delay(2000);
-  // controlLeg(leg5, leg5Home[0], leg5Home[1], leg5Home[2]);
-  //   delay(2000);
-  // controlLeg(leg6, leg6Home[0], leg6Home[1], leg6Home[2]);
+  // Bước 1: Thiết lập tất cả các ankle (bắp chân) trước
+  Serial.println("Setting all ankles...");
+  setServoAngle(leg1.pcaIndex, leg1.ankle, leg1Home[2]);
+  setServoAngle(leg2.pcaIndex, leg2.ankle, leg2Home[2]);
+  setServoAngle(leg3.pcaIndex, leg3.ankle, leg3Home[2]);
+  setServoAngle(leg4.pcaIndex, leg4.ankle, leg4Home[2]);
+  setServoAngle(leg5.pcaIndex, leg5.ankle, leg5Home[2]);
+  setServoAngle(leg6.pcaIndex, leg6.ankle, leg6Home[2]);
+  delay(100); // Đợi ankle di chuyển đến vị trí
+  
+  // Bước 2: Thiết lập tất cả các hip (hông) tiếp theo
+  Serial.println("Setting all hips...");
+  setServoAngle(leg1.pcaIndex, leg1.hip, leg1Home[0]);
+  setServoAngle(leg2.pcaIndex, leg2.hip, leg2Home[0]);
+  setServoAngle(leg3.pcaIndex, leg3.hip, leg3Home[0]);
+  setServoAngle(leg4.pcaIndex, leg4.hip, leg4Home[0]);
+  setServoAngle(leg5.pcaIndex, leg5.hip, leg5Home[0]);
+  setServoAngle(leg6.pcaIndex, leg6.hip, leg6Home[0]);
+  delay(100); // Đợi hip di chuyển đến vị trí
+  
+  // Bước 3: Cuối cùng thiết lập tất cả các knee (đầu gối)
+  Serial.println("Setting all knees...");
+  setServoAngle(leg1.pcaIndex, leg1.knee, leg1Home[1]);
+  setServoAngle(leg2.pcaIndex, leg2.knee, leg2Home[1]);
+  setServoAngle(leg3.pcaIndex, leg3.knee, leg3Home[1]);
+  setServoAngle(leg4.pcaIndex, leg4.knee, leg4Home[1]);
+  setServoAngle(leg5.pcaIndex, leg5.knee, leg5Home[1]);
+  setServoAngle(leg6.pcaIndex, leg6.knee, leg6Home[1]);
+  delay(100); // Đợi knee di chuyển đến vị trí
   
   Serial.println("Home position set");
 }
@@ -304,6 +313,8 @@ void processInput(char input) {
   }
 }
 
+
+
 void setup() {
   Serial.begin(115200);
   Serial.println("\n\n=== Hexapod Servo Adjustment Tool ===");
@@ -321,13 +332,50 @@ void setup() {
   // Set to custom home position
   homePosition();
   
-  displayPrompt();
+  // displayPrompt();
 }
 
 void loop() {
-  // // Check for serial input
-  // if (Serial.available() > 0) {
-  //   char input = Serial.read();
-  //   processInput(input);
-  // }
+  // Đợi lệnh từ Serial
+  if (Serial.available() > 0) {
+    char cmd = Serial.read();
+    
+    switch (cmd) {
+      case 'w': // Tiến
+        Serial.println("Command: Move Forward");
+        moveForward(50); // Di chuyển tiến 50mm
+        break;
+        
+      case 's': // Lùi
+        Serial.println("Command: Move Backward");
+        moveBackward(50); // Di chuyển lùi 50mm
+        break;
+        
+      case 'a': // Trái
+        Serial.println("Command: Move Left");
+        moveLeft(50); // Di chuyển sang trái 50mm
+        break;
+        
+      case 'd': // Phải
+        Serial.println("Command: Move Right");
+        moveRight(50); // Di chuyển sang phải 50mm
+        break;
+        
+      case 'h': // Home position
+        Serial.println("Command: Home Position");
+        homePosition();
+        break;
+        
+      default:
+        break;
+    }
+    
+    // Xóa buffer
+    while (Serial.available() > 0) {
+      Serial.read();
+    }
+  }
+  
+  // Thời gian delay để tránh xử lý quá nhanh
+  delay(50);
 }
