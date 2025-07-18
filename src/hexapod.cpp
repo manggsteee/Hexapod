@@ -18,45 +18,45 @@ const int LEG_SERVO_CHANNELS[Kinematics::NUM_LEGS][4] = {
 
 Hexapod::Hexapod() {}
 
-void Hexapod::goHome() {
-    Serial.println("Going to home position...");
+// void Hexapod::goHome() {
+//     Serial.println("Going to home position...");
     
-    // Góc home đã được điều chỉnh từ manual calibration
-    const float homeAngles[6][3] = {
-        {126.00f, 159.00f, 90.00f}, // Leg 0 - [Coxa, Femur, Tibia]
-        {99.00f, 163.00f, 79.00f},  // Leg 1
-        {85.00f, 159.00f, 80.00f},  // Leg 2
-        {80.00f, 69.00f, 97.00f},   // Leg 3
-        {100.00f, 19.00f, 78.00f},  // Leg 4
-        {96.00f, 34.00f, 106.00f}   // Leg 5
-    };
+//     // Góc home đã được điều chỉnh từ manual calibration
+//     const float homeAngles[6][3] = {
+//         {126.00f, 159.00f, 90.00f}, // Leg 0 - [Coxa, Femur, Tibia]
+//         {99.00f, 163.00f, 79.00f},  // Leg 1
+//         {85.00f, 159.00f, 80.00f},  // Leg 2
+//         {80.00f, 69.00f, 97.00f},   // Leg 3
+//         {100.00f, 19.00f, 78.00f},  // Leg 4
+//         {96.00f, 34.00f, 106.00f}   // Leg 5
+//     };
     
-    // Áp dụng góc home cho tất cả các chân
-    for (int leg = 0; leg < 6; leg++) {
-        int pca_id = LEG_SERVO_CHANNELS[leg][0];
+//     // Áp dụng góc home cho tất cả các chân
+//     for (int leg = 0; leg < 6; leg++) {
+//         int pca_id = LEG_SERVO_CHANNELS[leg][0];
         
-        // Coxa
-        int coxa_channel = LEG_SERVO_CHANNELS[leg][3]; // Channel 2
-        ServoController::setAngle(pca_id, coxa_channel, homeAngles[leg][0]);
-        delay(50);
+//         // Coxa
+//         int coxa_channel = LEG_SERVO_CHANNELS[leg][3]; // Channel 2
+//         ServoController::setAngle(pca_id, coxa_channel, homeAngles[leg][0]);
+//         delay(50);
         
-        // Femur  
-        int femur_channel = LEG_SERVO_CHANNELS[leg][2]; // Channel 1
-        ServoController::setAngle(pca_id, femur_channel, homeAngles[leg][1]);
-        delay(50);
+//         // Femur  
+//         int femur_channel = LEG_SERVO_CHANNELS[leg][2]; // Channel 1
+//         ServoController::setAngle(pca_id, femur_channel, homeAngles[leg][1]);
+//         delay(50);
         
-        // Tibia
-        int tibia_channel = LEG_SERVO_CHANNELS[leg][1]; // Channel 0
-        ServoController::setAngle(pca_id, tibia_channel, homeAngles[leg][2]);
-        delay(50);
+//         // Tibia
+//         int tibia_channel = LEG_SERVO_CHANNELS[leg][1]; // Channel 0
+//         ServoController::setAngle(pca_id, tibia_channel, homeAngles[leg][2]);
+//         delay(50);
         
-        Serial.print("Leg ");
-        Serial.print(leg);
-        Serial.println(" home position set");
-    }
+//         Serial.print("Leg ");
+//         Serial.print(leg);
+//         Serial.println(" home position set");
+//     }
     
-    Serial.println("Home position completed!");
-}
+//     Serial.println("Home position completed!");
+// }
 
 void Hexapod::setupLegs() {
     // --- Phần khởi tạo chân giữ nguyên ---
@@ -93,4 +93,45 @@ void Hexapod::update() {
     for (auto& leg : legs) {
         leg.update();
     }
+}
+
+void Hexapod::goHome() {
+    Serial.println("Going to home position using IK...");
+    
+    // Vị trí home trong không gian 3D (đơn vị: mm)
+    // Điều chỉnh các giá trị này cho phù hợp với robot của bạn
+    const float homePositions[6][3] = {
+        // [x, y, z] - tọa độ trong hệ tọa độ của từng chân
+        {198.5f, -17.5f, -50.1f},   // Leg 0 (phải-trước)
+        {198.5f, -17.5f, -50.1f},   // Leg 1 (phải-giữa) 
+        {198.5f, -17.5f, -50.1f},   // Leg 2 (phải-sau)
+        {198.5f, 17.5f, -50.1f},    // Leg 3 (trái-trước) - Lưu ý dấu Y đảo cho chân trái
+        {198.5f, 17.5f, -50.1f},    // Leg 4 (trái-giữa) - Lưu ý dấu Y đảo cho chân trái
+        {198.5f, 17.5f, -50.1f}     // Leg 5 (trái-sau) - Lưu ý dấu Y đảo cho chân trái
+    };
+    
+    // Áp dụng vị trí home cho tất cả các chân
+    for (int i = 0; i < 6; i++) {
+        if (i < legs.size()) {
+            Serial.print("Setting home position for leg ");
+            Serial.print(i);
+            Serial.print(": x=");
+            Serial.print(homePositions[i][0]);
+            Serial.print(", y=");
+            Serial.print(homePositions[i][1]);
+            Serial.print(", z=");
+            Serial.println(homePositions[i][2]);
+            
+            legs[i].setTargetPosition(
+                homePositions[i][0], 
+                homePositions[i][1], 
+                homePositions[i][2]
+            );
+            legs[i].update();
+            
+            delay(100); // Thời gian để servo di chuyển
+        }
+    }
+    
+    Serial.println("Home position completed using IK!");
 }

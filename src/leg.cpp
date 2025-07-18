@@ -17,14 +17,13 @@ constexpr float TIBIA_OFFSET = 90.0f;
 float current_coxa = 0.0f;
 
 const float HOME_CORRECTION[6][3] = {
-    {36.0f, 69.0f, 0.0f},   // Leg 0: +36°, +69°, +0°
-    {9.0f, 73.0f, -11.0f},  // Leg 1: +9°, +73°, -11°
-    {-5.0f, 69.0f, -10.0f}, // Leg 2: -5°, +69°, -10°
-    {-10.0f, -21.0f, 7.0f}, // Leg 3: -10°, -21°, +7°
-    {10.0f, -71.0f, -12.0f},// Leg 4: +10°, -71°, -12°
-    {6.0f, -56.0f, 16.0f}   // Leg 5: +6°, -56°, +16°
+    {0.0f, 8.0f, -2.0f},     // Leg 0: 0°, +8°, -2°
+    {-2.0f, 3.0f, 3.0f},   // Leg 1: -2°, +3°, +3°
+    {-5.0f, -4.0f, 12.0f},   // Leg 2: -5°, -4°, +12°
+    {8.0f, -10.0f, 7.0f},   // Leg 3: 8°, -10°, +7°
+    {-6.0f, 3.0f, -10.0f},   // Leg 4: -6°, +3°, -10°
+    {-0.02f, 5.22f, -5.20f}    // Leg 5: -0.02°, +5.22°, -5.20°
 };
-
 
 Leg::Leg(int leg_id, int pca_id, int coxa_channel, int femur_channel, int tibia_channel)
     : leg_id(leg_id),
@@ -34,128 +33,180 @@ Leg::Leg(int leg_id, int pca_id, int coxa_channel, int femur_channel, int tibia_
       tibia_channel(tibia_channel),
       target_x(0), target_y(0), target_z(0),
       coxa_angle(0), femur_angle(0), tibia_angle(0)
-{}
+{
+}
 
-void Leg::setTargetPosition(float x, float y, float z) {
+void Leg::setTargetPosition(float x, float y, float z, bool elbow_up)
+{
+    // Lưu vị trí mục tiêu gốc
     target_x = x;
     target_y = y;
     target_z = z;
-    computeIK();
+
+    // Tính toán IK với các giá trị target_x, target_y, target_z
+    computeIK(elbow_up);
+
+    // Chuyển đổi từ góc IK sang góc servo
+    int coxa_dir = (leg_id < 3) ? 1 : -1;
+    int femur_dir = (leg_id < 3) ? 1 : -1;
+    int tibia_dir = (leg_id < 3) ? 1 : -1;
+
+    // Áp dụng offset và home correction
+    coxa_servo_angle = COXA_OFFSET + HOME_CORRECTION[leg_id][0] + (coxa_dir * coxa_angle);
+    femur_servo_angle = FEMUR_OFFSET + HOME_CORRECTION[leg_id][1] + (femur_dir * femur_angle);
+    tibia_servo_angle = TIBIA_OFFSET + HOME_CORRECTION[leg_id][2] + (tibia_dir * tibia_angle);
+
+    // Giới hạn trong khoảng hợp lệ
+    coxa_servo_angle = std::max(0.0f, std::min(180.0f, coxa_servo_angle));
+    femur_servo_angle = std::max(0.0f, std::min(180.0f, femur_servo_angle));
+    tibia_servo_angle = std::max(0.0f, std::min(180.0f, tibia_servo_angle));
+
+    Serial.print("Final angles - Coxa: ");
+    Serial.print(coxa_servo_angle);
+    Serial.print("°, Femur: ");
+    Serial.print(femur_servo_angle);
+    Serial.print("°, Tibia: ");
+    Serial.print(tibia_servo_angle);
+    Serial.println("°");
 }
 
-void Leg::computeIK() {
-    printf("IK Input - Leg %d: x=%.2f, y=%.2f, z=%.2f\n", leg_id, target_x, target_y, target_z);
-    
+void Leg::computeIK(bool elbow_up)
+{
+    Serial.print("IK Input - Leg ");
+    Serial.print(leg_id);
+    Serial.print(": x=");
+    Serial.print(target_x);
+    Serial.print(", y=");
+    Serial.print(target_y);
+    Serial.print(", z=");
+    Serial.println(target_z);
+
+    // === KIỂM TRA INPUT HỢP LỆ ===
+    if (isnan(target_x) || isnan(target_y) || isnan(target_z))
+    {
+        Serial.println("ERROR: Invalid input coordinates");
+        return;
+    }
+
     // === BƯỚC 1: COXA ANGLE ===
-    coxa_angle = atan2(target_y, target_x) * 180.0f / M_PI;
-    
+    coxa_angle = atan2(target_y, target_x) * (180.0f / M_PI);
+
     // === BƯỚC 2: TÍNH KHOẢNG CÁCH TRONG MẶT PHẲNG 2D ===
     float horizontal_dist = sqrt(target_x * target_x + target_y * target_y) - COXA_LENGTH;
     float vertical_dist = target_z;
-
-    if (horizontal_dist < 5.0f) {
-        horizontal_dist = 5.0f; // Chỉ giữ minimum distance nhỏ
-    }
-
     float dist = sqrt(horizontal_dist * horizontal_dist + vertical_dist * vertical_dist);
+
+    Serial.print("Intermediate: horizontal_dist=");
+    Serial.print(horizontal_dist);
+    Serial.print(", vertical_dist=");
+    Serial.print(vertical_dist);
+    Serial.print(", dist=");
+    Serial.println(dist);
+
+    // === KIỂM TRA ĐIỀU KIỆN TỒN TẠI NGHIỆM ===
+    float max_reach = FEMUR_LENGTH + TIBIA_LENGTH;
+    if (dist > max_reach)
+    {
+        dist = max_reach - 1.0f; // Giới hạn khoảng cách tối đa
+        Serial.println("WARNING: Target out of reach, adjusting distance");
+    }
     
-    printf("Intermediate: horizontal_dist=%.2f, vertical_dist=%.2f, dist=%.2f\n", 
-           horizontal_dist, vertical_dist, dist);
-    
-    // === BỎ HẾT KIỂM TRA TẦM VỚI ===
-    // Không check max_reach, min_reach nữa
-    
-    // === TÍNH TOÁN IK TỰ DO ===
+
+    // === TÍNH TOÁN IK ===
     float a1 = atan2(-vertical_dist, horizontal_dist);
 
     float cos_a2 = (FEMUR_LENGTH * FEMUR_LENGTH + dist * dist - TIBIA_LENGTH * TIBIA_LENGTH) /
                    (2 * FEMUR_LENGTH * dist);
-    cos_a2 = std::max(-1.0f, std::min(1.0f, cos_a2)); // Chỉ clamp toán học
 
-    float a2 = acos(cos_a2);
+    // Kiểm tra validity trước khi clamp
+    if (cos_a2 < -1.00f || cos_a2 > 1.00f)
+    {
+        Serial.print("WARNING: cos_a2 out of range: ");
+        Serial.println(cos_a2);
+    }
+    cos_a2 = std::max(-1.0f, std::min(1.0f, cos_a2));
+
+    bool effective_elbow_up;
+    if (leg_id < 3) { // Chân phải (0, 1, 2)
+        effective_elbow_up = !elbow_up; // Đảo ngược elbow_up
+    } else { // Chân trái (3, 4, 5)
+        effective_elbow_up = elbow_up;
+    }
+
+    float a2;
+    if (elbow_up) {
+        a2 = -acos(cos_a2); // Luôn chọn góc âm cho elbow up
+    } else {
+        a2 = acos(cos_a2);  // Luôn chọn góc dương cho elbow down
+    }
     femur_angle = (a1 + a2) * 180.0f / M_PI;
-    
+
     float cos_tibia = (FEMUR_LENGTH * FEMUR_LENGTH + TIBIA_LENGTH * TIBIA_LENGTH - dist * dist) /
                       (2 * FEMUR_LENGTH * TIBIA_LENGTH);
-    cos_tibia = std::max(-1.0f, std::min(1.0f, cos_tibia)); // Chỉ clamp toán học
 
-    float phi3 = acos(cos_tibia);
-    tibia_angle = -(M_PI - phi3) * 180.0f / M_PI;
     
-    printf("Final angles - Coxa: %.2f°, Femur: %.2f°, Tibia: %.2f°\n", 
-           coxa_angle, femur_angle, tibia_angle);
-    
-    // === BỎ HẾT WARNING ANGLE CHECKS ===
-    // Không warning nữa, để IK tự do
-}
-
-void Leg::update() {
-    // --- CẢI TIẾN LOGIC CHIỀU QUAY SERVO ---
-    // Mặc định cho các chân bên phải (0, 1, 2)
-    int coxa_dir = 1;
-    int femur_dir = 1;
-    int tibia_dir = -1; // Tibia hầu như luôn quay ngược
-
-    // Các chân bên trái (3, 4, 5) thường có chiều quay ngược lại
-    if (leg_id >= 3) {
-        coxa_dir = -1;
-        femur_dir = -1;
-        // tibia_dir giữ nguyên
-    }
-    // Gợi ý: Nếu chân 3 vẫn đi sai, hãy thử đổi dấu của coxa_dir hoặc femur_dir ở đây.
-
-    // Áp dụng offset và chiều quay
-    float coxa_pwm = COXA_OFFSET + HOME_CORRECTION[leg_id][0] + (coxa_dir * coxa_angle);
-    float femur_pwm = FEMUR_OFFSET + HOME_CORRECTION[leg_id][1] + (femur_dir * femur_angle);
-    float tibia_pwm = TIBIA_OFFSET + HOME_CORRECTION[leg_id][2] + (tibia_dir * tibia_angle);
-static float current_coxa_angles[6] = {COXA_OFFSET, COXA_OFFSET, COXA_OFFSET, 
-                                         COXA_OFFSET, COXA_OFFSET, COXA_OFFSET};
-    
-    // Xác định bước di chuyển (có thể điều chỉnh số này để thay đổi tốc độ)
-    float step_size = 1.0f; // Số độ mỗi lần di chuyển
-    
-    // Tính góc mới dựa trên bước di chuyển
-    if (abs(current_coxa_angles[leg_id] - coxa_pwm) > step_size) {
-        // Nếu góc mới lớn hơn góc hiện tại
-        if (current_coxa_angles[leg_id] < coxa_pwm) {
-            current_coxa_angles[leg_id] += step_size;
-        } 
-        // Nếu góc mới nhỏ hơn góc hiện tại
-        else {
-            current_coxa_angles[leg_id] -= step_size;
-        }
-    } else {
-        // Nếu sự khác biệt nhỏ hơn bước di chuyển, đặt đúng vị trí
-        current_coxa_angles[leg_id] = coxa_pwm;
+    cos_tibia = std::max(-1.0f, std::min(1.0f, cos_tibia));
+    float tibia_angle_rad = acos(cos_tibia);
+    // Thay đổi phương pháp tính tibia_angle để phù hợp với elbow up
+    if (a2 < 0) { // elbow up
+        tibia_angle = (180.0f - tibia_angle_rad * 180.0f / M_PI); // Giá trị dương, góc hẹp
+    } else { // elbow down
+        tibia_angle = -(180.0f - tibia_angle_rad * 180.0f / M_PI); // Giá trị âm, góc rộng
     }
     
-    // Áp dụng góc coxa mới đã được làm chậm
-    ServoController::setAngle(pca_id, coxa_channel, current_coxa_angles[leg_id]);
-    // Giới hạn góc trong khoảng an toàn
-    femur_pwm = std::max(0.0f, std::min(180.0f, femur_pwm));
-    tibia_pwm = std::max(0.0f, std::min(180.0f, tibia_pwm));
     
-    // int counter = 10;
-    // Serial.println("Current Coxa angle: " + String(current_coxa));
-    // Serial.println("Target Coxa angle: " + String(coxa_pwm));
-    // if (coxa_pwm < current_coxa){
-    //     counter = -counter; // Chỉ cần tăng góc coxa
-    // }
-    // else{
-    //     counter = counter; // Chỉ cần giảm góc coxa
-    // }
-    // // Gửi lệnh đến servo controller
-    // for (int i = int(current_coxa); i <= int(coxa_pwm); i += counter) {
-    //     Serial.println("Setting Coxa angle: " + String(i));
-    //     ServoController::setAngle(pca_id, coxa_channel, i);
-    //     delay(100);
-    // }
-    // current_coxa = coxa_pwm;
-    ServoController::setAngle(pca_id, coxa_channel, coxa_pwm);
-    ServoController::setAngle(pca_id, femur_channel, femur_pwm);
-    ServoController::setAngle(pca_id, tibia_channel, tibia_pwm);
+    // Hiệu chỉnh cuối cùng nếu tibia_angle vẫn là 0
+    if (abs(tibia_angle) < 0.01f) {
+        // Tibia đối nghịch với femur để giữ chân thẳng
+        tibia_angle = -femur_angle;
+        Serial.print("Corrected tibia angle: ");
+        Serial.println(tibia_angle);
+    }
+    
+    // Giới hạn góc tibia trong phạm vi hợp lý
+    tibia_angle = std::max(-90.0f, std::min(90.0f, tibia_angle));
+
+    // === KIỂM TRA KẾT QUẢ HỢP LỆ ===
+    if (isnan(femur_angle) || isnan(tibia_angle))
+    {
+        Serial.println("ERROR: NaN result in IK calculation");
+        femur_angle = 0.0f;
+        tibia_angle = 0.0f;
+    }
 }
 
-std::array<float, 3> Leg::getServoAngles() const {
-    return {coxa_angle, femur_angle, tibia_angle};
+void Leg::update()
+{
+    // Chỉ cần áp dụng góc servo đã tính
+    ServoController::setAngle(pca_id, coxa_channel, coxa_servo_angle);
+    ServoController::setAngle(pca_id, femur_channel, femur_servo_angle);
+    ServoController::setAngle(pca_id, tibia_channel, tibia_servo_angle);
+}
+
+std::array<float, 3> Leg::getServoAngles() const
+{
+    return {coxa_servo_angle, femur_servo_angle, tibia_servo_angle};
+}
+
+void Leg::setServoAngles(bool isSetHome, float coxa, float femur, float tibia)
+{
+    // Đặt góc servo trực tiếp, bỏ qua IK
+    coxa_servo_angle = coxa;
+    femur_servo_angle = femur;
+    tibia_servo_angle = tibia;
+
+    // Giới hạn trong khoảng hợp lệ
+    coxa_servo_angle = std::max(0.0f, std::min(180.0f, coxa_servo_angle));
+    femur_servo_angle = std::max(0.0f, std::min(180.0f, femur_servo_angle));
+    tibia_servo_angle = std::max(0.0f, std::min(180.0f, tibia_servo_angle));
+
+    // Chuyển đổi ngược từ góc servo sang góc IK (nếu cần)
+    int coxa_dir = (leg_id < 3) ? 1 : -1;
+    int femur_dir = (leg_id < 3) ? 1 : -1;
+    int tibia_dir = -1;
+
+    coxa_angle = (coxa_servo_angle - COXA_OFFSET - (isSetHome ? HOME_CORRECTION[leg_id][0] : 0)) / coxa_dir;
+    femur_angle = (femur_servo_angle - FEMUR_OFFSET - (isSetHome ? HOME_CORRECTION[leg_id][1] : 0)) / femur_dir;
+    tibia_angle = (tibia_servo_angle - TIBIA_OFFSET - (isSetHome ? HOME_CORRECTION[leg_id][2] : 0)) / tibia_dir;
+
 }

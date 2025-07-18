@@ -12,7 +12,6 @@ struct Vec3 {
 
 class Kinematics {
 public:
-    // QUAY TRỞ LẠI GIÁ TRỊ 6
     static constexpr size_t NUM_LEGS = 6;
 
     Kinematics(float coxa_length, float femur_length, float tibia_length);
