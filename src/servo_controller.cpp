@@ -2,7 +2,9 @@
 #include <Wire.h>
 #include <Adafruit_PWMServoDriver.h>
 
-// Cấu hình cho servo (giữ nguyên)
+namespace hexapod {
+
+// Cấu hình cho servo
 #define SERVOMIN  150
 #define SERVOMAX  600
 #define SERVO_FREQ 50
@@ -28,7 +30,6 @@ static float map_float(float x, float in_min, float in_max, float out_min, float
     return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
 }
 
-// Cập nhật hàm setAngle để nhận thêm pca_id
 void ServoController::setAngle(int pca_id, int channel, float angle) {
     if (!initialized) return;
 
@@ -42,6 +43,16 @@ void ServoController::setAngle(int pca_id, int channel, float angle) {
         pwm_driver2.setPWM(channel, 0, pulse_length);
     }
 }
+
+void ServoController::setLegAngles(int pca_id, int coxa_channel, int femur_channel, 
+                            int tibia_channel, const ServoAngles& angles) {
+    // Thiết lập cả 3 servo của một chân
+    setAngle(pca_id, coxa_channel, angles.coxa);
+    setAngle(pca_id, femur_channel, angles.femur);
+    setAngle(pca_id, tibia_channel, angles.tibia);
+}
+
+} // namespace hexapod
 
 /**
  * LƯU Ý QUAN TRỌNG:

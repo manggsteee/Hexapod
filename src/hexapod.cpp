@@ -1,22 +1,38 @@
 #include "hexapod.hpp"
 #include "servo_controller.hpp"
+#include "config.hpp"
 #include <Arduino.h> // Cần thiết cho hàm delay()
+#include "leg.hpp" // Thêm dòng này nếu ServoChannels được định nghĩa trong leg.hpp
 
-// Cấu trúc LEG_SERVO_CHANNELS giữ nguyên như bạn đã định nghĩa
-const int LEG_SERVO_CHANNELS[Kinematics::NUM_LEGS][4] = {
-    // --- Các chân trên Mạch #1 (PCA_ID = 0) ---
-    {0, 0, 1, 2},    // Chân 0 (phải-trước)
-    {0, 4, 5, 6},    // Chân 1 (phải-giữa)
-    {0, 8, 9, 10},    // Chân 2 (phải-sau)
+namespace hexapod {
 
-    // --- Các chân trên Mạch #2 (PCA_ID = 1) ---
-    {1, 0, 1, 2},    // Chân 0 (phải-trước)
-    {1, 4, 5, 6},    // Chân 1 (phải-giữa)
-    {1, 8, 9, 10},    // Chân 2 (phải-sau)
-
+// Cấu trúc servo cho các chân
+const ServoChannels LEG_SERVO_CHANNELS[6] = {
+    {0, 2, 1, 0},  // Leg 0: PCA=0, Coxa=2, Femur=1, Tibia=0
+    {0, 6, 5, 4},  // Leg 1: PCA=0, Coxa=6, Femur=5, Tibia=4
+    {0, 10, 9, 8}, // Leg 2: PCA=0, Coxa=10, Femur=9, Tibia=8
+    {1, 2, 1, 0},  // Leg 3: PCA=1, Coxa=2, Femur=1, Tibia=0
+    {1, 6, 5, 4},  // Leg 4: PCA=1, Coxa=6, Femur=5, Tibia=4
+    {1, 10, 9, 8}  // Leg 5: PCA=1, Coxa=10, Femur=9, Tibia=8
 };
 
-Hexapod::Hexapod() {}
+// Vị trí khởi tạo của các chân
+const Point3D HOME_POSITIONS[6] = {
+    {198.5f, 0.0f, -50.1f},  // Leg 0 (phải-trước)
+    {198.5f, 0.0f, -50.1f},  // Leg 1 (phải-giữa) 
+    {198.5f, 0.0f, -50.1f},  // Leg 2 (phải-sau)
+    {198.5f, 0.0f, -50.1f},   // Leg 3 (trái-trước)
+    {198.5f, 0.0f, -50.1f},   // Leg 4 (trái-giữa)
+    {198.5f, 0.0f, -50.1f}    // Leg 5 (trái-sau)
+};
+
+Hexapod::Hexapod() {
+    // Khởi tạo ServoController
+    ServoController::initialize();
+    
+    // Khởi tạo các chân
+    setupLegs();
+}
 
 // void Hexapod::goHome() {
 //     Serial.println("Going to home position...");
@@ -37,17 +53,17 @@ Hexapod::Hexapod() {}
         
 //         // Coxa
 //         int coxa_channel = LEG_SERVO_CHANNELS[leg][3]; // Channel 2
-//         ServoController::setAngle(pca_id, coxa_channel, homeAngles[leg][0]);
+//         servo_controller::ServoController::setAngle(pca_id, coxa_channel, homeAngles[leg][0]);
 //         delay(50);
         
 //         // Femur  
 //         int femur_channel = LEG_SERVO_CHANNELS[leg][2]; // Channel 1
-//         ServoController::setAngle(pca_id, femur_channel, homeAngles[leg][1]);
+//         servo_controller::ServoController::setAngle(pca_id, femur_channel, homeAngles[leg][1]);
 //         delay(50);
         
 //         // Tibia
 //         int tibia_channel = LEG_SERVO_CHANNELS[leg][1]; // Channel 0
-//         ServoController::setAngle(pca_id, tibia_channel, homeAngles[leg][2]);
+//         servo_controller::ServoController::setAngle(pca_id, tibia_channel, homeAngles[leg][2]);
 //         delay(50);
         
 //         Serial.print("Leg ");
@@ -59,34 +75,34 @@ Hexapod::Hexapod() {}
 // }
 
 void Hexapod::setupLegs() {
-    // --- Phần khởi tạo chân giữ nguyên ---
-    legs.reserve(Kinematics::NUM_LEGS);
-    for (int i = 0; i < Kinematics::NUM_LEGS; ++i) {
-        int pca_id     = LEG_SERVO_CHANNELS[i][0];
-        int tibia_ch = LEG_SERVO_CHANNELS[i][1];  // Channel 0 = Tibia
-        int femur_ch = LEG_SERVO_CHANNELS[i][2];  // Channel 1 = Femur  
-        int coxa_ch = LEG_SERVO_CHANNELS[i][3];   // Channel 2 = Coxa
-
+    // --- Phần khởi tạo chân ---
+    legs.reserve(config::NUM_LEGS);
+    for (int i = 0; i < config::NUM_LEGS; ++i) {
+        const auto& channels = hexapod::LEG_SERVO_CHANNELS[i];
+        bool is_right = (i < 3); // Legs 0, 1, 2 are right legs; 3, 4, 5 are left
         legs.emplace_back(
             i,
-            pca_id,
-            coxa_ch,
-            femur_ch,
-            tibia_ch
+            channels.pca_id,
+            channels.coxa,
+            channels.femur,
+            channels.tibia,
+            is_right
         );
     }
 
-    // --- PHẦN THÊM MỚI: ĐƯA ROBOT VỀ VỊ TRÍ HOME KHI KHỞI ĐỘNG ---
+    // --- ĐƯA ROBOT VỀ VỊ TRÍ HOME KHI KHỞI ĐỘNG ---
     Serial.println("Moving to home position...");
     this->goHome();
     delay(1000); // Chờ 1 giây để các servo di chuyển xong
     Serial.println("Homing complete.");
 }
 
-void Hexapod::setTargetPositions(const std::array<Vec3, Kinematics::NUM_LEGS>& positions) {
+bool Hexapod::setTargetPositions(const std::array<Point3D, config::NUM_LEGS>& positions) {
+    bool all_reachable = true;
     for (size_t i = 0; i < legs.size(); ++i) {
-        legs[i].setTargetPosition(positions[i].x, positions[i].y, positions[i].z);
+        legs[i].setTargetPosition(positions[i]);
     }
+    return all_reachable;
 }
 
 void Hexapod::update() {
@@ -96,42 +112,37 @@ void Hexapod::update() {
 }
 
 void Hexapod::goHome() {
-    Serial.println("Going to home position using IK...");
-    
-    // Vị trí home trong không gian 3D (đơn vị: mm)
-    // Điều chỉnh các giá trị này cho phù hợp với robot của bạn
-    const float homePositions[6][3] = {
-        // [x, y, z] - tọa độ trong hệ tọa độ của từng chân
-        {198.5f, -17.5f, -50.1f},   // Leg 0 (phải-trước)
-        {198.5f, -17.5f, -50.1f},   // Leg 1 (phải-giữa) 
-        {198.5f, -17.5f, -50.1f},   // Leg 2 (phải-sau)
-        {198.5f, 17.5f, -50.1f},    // Leg 3 (trái-trước) - Lưu ý dấu Y đảo cho chân trái
-        {198.5f, 17.5f, -50.1f},    // Leg 4 (trái-giữa) - Lưu ý dấu Y đảo cho chân trái
-        {198.5f, 17.5f, -50.1f}     // Leg 5 (trái-sau) - Lưu ý dấu Y đảo cho chân trái
-    };
+    Serial.println("Going to home position...");
     
     // Áp dụng vị trí home cho tất cả các chân
-    for (int i = 0; i < 6; i++) {
+    for (int i = 0; i < config::NUM_LEGS; i++) {
         if (i < legs.size()) {
+            const auto& home = HOME_POSITIONS[i];
             Serial.print("Setting home position for leg ");
             Serial.print(i);
             Serial.print(": x=");
-            Serial.print(homePositions[i][0]);
+            Serial.print(home.x);
             Serial.print(", y=");
-            Serial.print(homePositions[i][1]);
+            Serial.print(home.y);
             Serial.print(", z=");
-            Serial.println(homePositions[i][2]);
+            Serial.println(home.z);
             
-            legs[i].setTargetPosition(
-                homePositions[i][0], 
-                homePositions[i][1], 
-                homePositions[i][2]
-            );
+            legs[i].setTargetPosition(home);
             legs[i].update();
             
             delay(100); // Thời gian để servo di chuyển
         }
     }
     
-    Serial.println("Home position completed using IK!");
+    Serial.println("Home position completed!");
 }
+
+Leg& Hexapod::getLeg(int leg_id) {
+    if (leg_id < 0 || leg_id >= legs.size()) {
+        // Nếu leg_id không hợp lệ, trả về chân đầu tiên
+        return legs[0];
+    }
+    return legs[leg_id];
+}
+
+} // namespace hexapod

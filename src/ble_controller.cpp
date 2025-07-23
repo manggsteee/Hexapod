@@ -2,6 +2,8 @@
 #include <esp32-hal.h>
 #include <algorithm>
 
+namespace hexapod {
+
 BLEController::CommandCallback::CommandCallback(BLEController *parent) : parent(parent) {}
 
 void BLEController::ServerCallbacks::onConnect(BLEServer *pServer)
@@ -163,7 +165,7 @@ void BLEController::sendMessage(const std::string &message)
 }
 
 
-void BLEController::setCommandHandler(void (*handler)(char))
+void BLEController::setCommandHandler(std::function<void(char)> handler)
 {
     commandHandler = handler;
 }
@@ -215,3 +217,5 @@ void BLEController::enableAutoConnect(bool enable) {
         _lastConnectionAttempt = millis();
     }
 }
+
+} // namespace hexapod

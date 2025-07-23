@@ -1,29 +1,63 @@
-#ifndef HEXAPOD_HPP
-#define HEXAPOD_HPP
+#pragma once
 
 #include "leg.hpp"
-#include "kinematics.hpp" // Để dùng Vec3 và NUM_LEGS
+#include "config.hpp"
+#include "types.hpp"
 #include <array>
 #include <vector>
 
+namespace hexapod {
+
+/**
+ * Main Hexapod class representing the complete robot
+ */
 class Hexapod {
 public:
+    /**
+     * Constructor - initializes servo controller and legs
+     */
     Hexapod();
-
-    // Thiết lập các chân với kênh servo tương ứng
+    
+    /**
+     * Set up all legs with their correct servo channels and parameters
+     */
     void setupLegs();
-
-    // Cập nhật vị trí mục tiêu cho tất cả các chân
-    void setTargetPositions(const std::array<Vec3, Kinematics::NUM_LEGS>& positions);
-
-    // Gọi hàm update() của mỗi chân để di chuyển servo
+    
+    /**
+     * Set target positions for all legs
+     * 
+     * @param positions Array of target positions for all legs
+     * @return True if all positions are reachable, false otherwise
+     */
+    bool setTargetPositions(const std::array<Point3D, config::NUM_LEGS>& positions);
+    
+    /**
+     * Update servo positions for all legs
+     */
     void update();
-
+    
+    /**
+     * Return all legs to home position
+     */
     void goHome();
     
+    /**
+     * Get reference to a specific leg
+     * 
+     * @param leg_id ID of the leg (0-5)
+     * @return Reference to the requested leg
+     */
+    Leg& getLeg(int leg_id);
+    
+    /**
+     * Get reference to all legs
+     * 
+     * @return Reference to the vector of legs
+     */
+    const std::vector<Leg>& getLegs() const { return legs; }
+    
 private:
-    // Sử dụng std::vector và std::move để khởi tạo danh sách các chân
     std::vector<Leg> legs;
 };
 
-#endif // HEXAPOD_HPP
+} // namespace hexapod

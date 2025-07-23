@@ -1,45 +1,96 @@
 #pragma once
 
-#include <array>
+#include "types.hpp"
+#include "config.hpp"
+#include "kinematics.hpp"
+#include "servo_controller.hpp"
 
+namespace hexapod {
+
+/**
+ * Represents a single leg of the hexapod with its servos and kinematics
+ */
 class Leg {
 public:
-    // Cập nhật hàm khởi tạo để nhận thêm pca_id (nếu bạn vẫn dùng cấu trúc này)
-    Leg(int leg_id, int pca_id, int coxa_channel, int femur_channel, int tibia_channel);
+    /**
+     * Constructor for a leg
+     * 
+     * @param leg_id ID of the leg (0-5)
+     * @param pca_id ID of the PCA9685 board this leg is connected to
+     * @param coxa_channel Servo channel for coxa joint
+     * @param femur_channel Servo channel for femur joint
+     * @param tibia_channel Servo channel for tibia joint
+     * @param is_right Whether this is a right side leg
+     */
+    Leg(int leg_id, int pca_id, int coxa_channel, int femur_channel, int tibia_channel, bool is_right);
 
-    // XÓA BỎ "delete", THAY BẰNG "default" ĐỂ CHO PHÉP SAO CHÉP
+    // Allow copying and moving
     Leg() = default;
     Leg(const Leg&) = default;
     Leg& operator=(const Leg&) = default;
-
-    // Move constructor/assignment vẫn giữ nguyên
     Leg(Leg&&) = default;
     Leg& operator=(Leg&&) = default;
 
-
-    void setTargetPosition(float x, float y, float z, bool elbow_up = false);
+    /**
+     * Set the target position for this leg
+     * 
+     * @param position Target position in leg's coordinate system
+     * @param elbow_up Use elbow up configuration (default: false)
+     * @return True if the position is reachable, false otherwise
+     */
+    bool setTargetPosition(const Point3D& position, bool elbow_up = false);
+    
+    /**
+     * Update servo positions based on target position
+     */
     void update();
-    std::array<float, 3> getServoAngles() const;
-    std::array<float, 3> getTargetPosition() const {
-        return {target_x, target_y, target_z};
+    
+    /**
+     * Get current servo angles
+     * 
+     * @return Current servo angles
+     */
+    ServoAngles getServoAngles() const;
+    
+    /**
+     * Get current target position
+     * 
+     * @return Current target position
+     */
+    Point3D getTargetPosition() const {
+        return target_position;
     }
-    void setServoAngles(bool isSetHome, float coxa, float femur, float tibia);
-
-    void getCurrentAngles(float& coxa, float& femur, float& tibia) const {
-        coxa = coxa_angle;
-        femur = femur_angle; 
-        tibia = tibia_angle;
+    
+    /**
+     * Set servo angles directly
+     * 
+     * @param isSetHome Whether this is setting the home position
+     * @param servoAngles The servo angles to set
+     */
+    void setServoAngles(bool isSetHome, const ServoAngles& servoAngles);
+    
+    /**
+     * Get current IK angles
+     * 
+     * @return Current IK angles
+     */
+    ServoAngles getCurrentAngles() const {
+        return current_angles;
     }
-
-    bool isIKValid() const {
-        return (femur_angle >= -90 && femur_angle <= 180) &&
-               (tibia_angle >= -90 && tibia_angle <= 90);
-    }
-
+    
+    /**
+     * Check if the inverse kinematics solution is valid
+     * 
+     * @return True if the solution is valid, false otherwise
+     */
+    bool isIKValid() const;
+    
+    // Getters for servo channels and PCA ID
     int getCoxaChannel() const { return coxa_channel; }
     int getFemurChannel() const { return femur_channel; }
     int getTibiaChannel() const { return tibia_channel; }
     int getPCA_ID() const { return pca_id; }
+    bool isRightLeg() const { return is_right; }
 
 private:
     int leg_id;
@@ -47,19 +98,11 @@ private:
     int coxa_channel;
     int femur_channel;
     int tibia_channel;
+    bool is_right;
 
-    float target_x;
-    float target_y;
-    float target_z;
-
-    float coxa_angle;
-    float femur_angle;
-    float tibia_angle;
-
-    float coxa_servo_angle;  // Góc thực tế của servo coxa
-    float femur_servo_angle; // Góc thực tế của servo femur
-    float tibia_servo_angle; // Góc thực tế của servo tibia
-
-    void computeIK(bool elbow_up = false);
-
+    Point3D target_position;
+    ServoAngles current_angles;
+    ServoAngles servo_angles;  // Actual servo angles after conversion
 };
+
+} // namespace hexapod

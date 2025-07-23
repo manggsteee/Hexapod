@@ -1,19 +1,43 @@
-#ifndef SERVO_CONTROLLER_HPP
-#define SERVO_CONTROLLER_HPP
+#pragma once
 
 #include <cstdint>
+#include "types.hpp"
 
+namespace hexapod {
+
+/**
+ * Controller class for servo motors using PCA9685 drivers
+ */
 class ServoController {
 public:
-    // Khởi tạo giao tiếp I2C và cả hai mạch PCA9685
+    /**
+     * Initialize I2C communication and PCA9685 drivers
+     */
     static void initialize();
-
-    // Đặt góc cho một servo cụ thể (0 - 180 độ)
-    // Controller sẽ tự biết kênh này thuộc mạch PCA9685 nào
+    
+    /**
+     * Set angle for a specific servo
+     * 
+     * @param pca_id ID of the PCA9685 board
+     * @param channel Servo channel on the PCA9685 board
+     * @param angle Angle to set (0-180 degrees)
+     */
     static void setAngle(int pca_id, int channel, float angle);
+    
+    /**
+     * Set multiple servo angles at once for a leg
+     * 
+     * @param pca_id ID of the PCA9685 board
+     * @param coxa_channel Coxa servo channel
+     * @param femur_channel Femur servo channel
+     * @param tibia_channel Tibia servo channel
+     * @param angles ServoAngles containing angles for coxa, femur and tibia
+     */
+    static void setLegAngles(int pca_id, int coxa_channel, int femur_channel, 
+                             int tibia_channel, const ServoAngles& angles);
 
 private:
     static bool initialized;
 };
 
-#endif // SERVO_CONTROLLER_HPP
+} // namespace hexapod
