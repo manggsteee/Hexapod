@@ -55,7 +55,7 @@ void turnRobot(Leg legs[], int tripod1[], int tripod2[], float turnFactor, int s
 void moveWithJoystick(float joystickX, float joystickY, bool continuous);
 void handleBLECommand(char input);
 void testJoystickSimulation();
-void createLegTrajectory(float t, float& x, float& y, float& z);
+void createLegTrajectory(float t, float& x, float& y, float& z, float targetY);
 float bezier(float t, float p0, float p1, float p2, float p3);
 void createSmoothTrajectory(float t, float& x, float& y, float& z);
 void createBioinspiredTrajectory(float t, float& x, float& y, float& z);
@@ -281,8 +281,8 @@ void testTripodGait()
             
             for (int i = 0; i < 3; i++) {
                 float x, y, z;
-                // Sử dụng quỹ đạo Bezier
-                createLegTrajectory(t, x, y, z);
+                // Sử dụng quỹ đạo Bezier với giá trị mặc định (tiến)
+                createLegTrajectory(t, x, y, z, -150.0f);
                 legs[tripod1[i]].setTargetPosition(x, y, z, t < 0.4f); // Elbow up for first half
                 legs[tripod1[i]].update();
             }
@@ -302,7 +302,7 @@ void testTripodGait()
             
             for (int i = 0; i < 3; i++) {
                 float x, y, z;
-                createLegTrajectory(t, x, y, z);
+                createLegTrajectory(t, x, y, z, -150.0f);
                 legs[tripod2[i]].setTargetPosition(x, y, z, t < 0.4f); // Elbow up for first half
                 legs[tripod2[i]].update();
             }
@@ -660,15 +660,16 @@ void moveDirection(Leg legs[], int tripod[],
     const int UPDATE_INTERVAL = 15;
     const int STEPS = stepDelay / UPDATE_INTERVAL;
     
-    // === TRIPOD 1 MOVEMENT ===
+    // === TRIPOD MOVEMENT ===
     for (int step = 0; step < STEPS; step++) {
         float t = (float)step / STEPS;
         
         for (int i = 0; i < 3; i++) {
             float x, y, z;
-            createLegTrajectory(t, x, y, z);
+            // Truyền targetY để hàm createLegTrajectory biết hướng di chuyển
+            createLegTrajectory(t, x, y, z, targetY);
             // Chỉ dùng elbow_up khi nhấc chân
-            legs[tripod[i]].setTargetPosition(x, y, z, t < 0.5f);
+            legs[tripod[i]].setTargetPosition(x, y, z, t < 0.4f);
             legs[tripod[i]].update();
         }
         
@@ -894,7 +895,7 @@ void turnRobot(Leg legs[], int tripod1[], int tripod2[], float turnFactor, int s
     const int UPDATE_INTERVAL = 10;
     const float TURN_STRIDE = 100.0f; // Biên độ rẽ cơ bản
     const float STEP_HEIGHT = 270.0f;
-    const float BASE_X = 225.0f;
+    const float BASE_X = 198.5f;
     
     // Xác định hướng rẽ
     bool isTurningRight = (turnFactor > 0);
@@ -989,7 +990,8 @@ void turnRobot(Leg legs[], int tripod1[], int tripod2[], float turnFactor, int s
             xOffset = -10.0f * magnitude;
         }
         
-        legs[legId].setTargetPosition(BASE_X + xOffset, yOffset, 0.0f);
+        // Hạ chân xuống cùng mức với khi di chuyển tiến (-50.1f)
+        legs[legId].setTargetPosition(BASE_X + xOffset, yOffset, -50.1f);
         legs[legId].update();
     }
     
@@ -1033,12 +1035,13 @@ void turnRobot(Leg legs[], int tripod1[], int tripod2[], float turnFactor, int s
         delay(stepDelay);
     }
     
-    // BƯỚC 6: Hạ các chân tripod2 xuống
+    // BƯỚC 6: Hạ các chân tripod2 xuống (cùng mức với khi di chuyển tiến)
     Serial.println("  Step 6: Tripod 2 DOWN");
     for (int i = 0; i < 3; i++) {
         bool isRightLeg = (tripod2[i] < 3);
         float yOffset = isRightLeg ? offsetRight : offsetLeft;
-        legs[tripod2[i]].setTargetPosition(BASE_X, yOffset, 0.0f);
+        // Hạ chân xuống cùng mức với khi di chuyển tiến (-50.1f)
+        legs[tripod2[i]].setTargetPosition(BASE_X, yOffset, -50.1f);
         legs[tripod2[i]].update();
     }
     
@@ -1050,10 +1053,11 @@ void turnRobot(Leg legs[], int tripod1[], int tripod2[], float turnFactor, int s
         delay(stepDelay);
     }
     
-    // BƯỚC 7: Đưa tất cả các chân về vị trí trung tâm
+    // BƯỚC 7: Đưa tất cả các chân về vị trí trung tâm (cùng mức với khi di chuyển tiến)
     Serial.println("  Step 7: All legs to center");
     for (int i = 0; i < 6; i++) {
-        legs[i].setTargetPosition(BASE_X, 0.0f, 0.0f);
+        // Hạ chân xuống cùng mức với khi di chuyển tiến (-50.1f)
+        legs[i].setTargetPosition(BASE_X, 0.0f, -50.1f);
         legs[i].update();
     }
     
@@ -1104,7 +1108,6 @@ void moveWithJoystick(float joystickX, float joystickY, bool continuous = false)
     const float STRIDE_LENGTH = 70.0f; // Bước chân tối đa (mm)
     const float STEP_HEIGHT = 56.29f;   // Độ cao bước chân (mm)
     const float BASE_X = 179.44f;        // Vị trí X mặc định (mm)
-    const float LATERAL_MOVE = 80.0f;   // Phạm vi di chuyển ngang tối đa (mm)
 
     // Điều chỉnh tốc độ dựa trên mức độ nghiêng của joystick
     float speedFactor = max(abs(joystickX), abs(joystickY));
@@ -1116,9 +1119,8 @@ void moveWithJoystick(float joystickX, float joystickY, bool continuous = false)
     float absX = abs(joystickX);
     float absY = abs(joystickY);
     
-    // Biến static riêng cho mỗi chế độ
-    static bool firstTripodActiveForward = true;
-    static bool firstTripodActiveLateral = true;
+    // Biến static cho việc luân phiên tripod
+    static bool firstTripodActive = true;
 
     // Debug
     Serial.print("Speed: ");
@@ -1126,22 +1128,20 @@ void moveWithJoystick(float joystickX, float joystickY, bool continuous = false)
     Serial.print(", Delay: ");
     Serial.println(baseStepDelay);
 
-    // Xác định chế độ di chuyển
-    // 0: tiến/lùi, 1: rẽ trái/phải, 2: di chuyển ngang
+    // Xác định chế độ di chuyển: chỉ có 2 chế độ
+    // 0: tiến/lùi, 1: rẽ trái/phải
     int moveMode;
     
-    if (absY > absX * 1.5) {
-        moveMode = 0; // Tiến/lùi
-    } else if (absX > absY * 1.5) {
-        moveMode = 1; // Rẽ trái/phải
+    if (absY > absX) {
+        moveMode = 0; // Tiến/lùi (Y dominant)
     } else {
-        moveMode = 2; // Di chuyển ngang (lateral)
+        moveMode = 1; // Rẽ trái/phải (X dominant)
     }
 
     // Chế độ tiến/lùi
     if (moveMode == 0)
     {
-        // Chế độ tiến/lùi (không có rẽ)
+        // Chế độ tiến/lùi
         float y = -joystickY * STRIDE_LENGTH; // Ngược dấu: joystick -Y = tiến tới
         float stepDelay = baseStepDelay;
 
@@ -1150,15 +1150,15 @@ void moveWithJoystick(float joystickX, float joystickY, bool continuous = false)
         Serial.println(joystickY);
 
         // Thực hiện di chuyển tiến/lùi
-        if (firstTripodActiveForward)
+        if (firstTripodActive)
         {
             moveDirection(legs, tripod1, BASE_X, y, STEP_HEIGHT, stepDelay, true);
-            firstTripodActiveForward = false;
+            firstTripodActive = false;
         }
         else
         {
             moveDirection(legs, tripod2, BASE_X, y, STEP_HEIGHT, stepDelay, true);
-            firstTripodActiveForward = true;
+            firstTripodActive = true;
         }
     }
     // Chế độ rẽ trái/phải
@@ -1173,38 +1173,15 @@ void moveWithJoystick(float joystickX, float joystickY, bool continuous = false)
         Serial.println(joystickX);
 
         // Thực hiện chuyển động quay
-        if (firstTripodActiveForward)
+        if (firstTripodActive)
         {
             turnRobot(legs, tripod1, tripod2, turnFactor, stepDelay, true);
-            firstTripodActiveForward = false;
+            firstTripodActive = false;
         }
         else
         {
             turnRobot(legs, tripod2, tripod1, turnFactor, stepDelay, true);
-            firstTripodActiveForward = true;
-        }
-    }
-    // Chế độ di chuyển ngang
-    else if (moveMode == 2)
-    {
-        // Chế độ di chuyển ngang (trái/phải)
-        float x = BASE_X + (joystickX * LATERAL_MOVE);
-        float stepDelay = baseStepDelay;
-
-        // Ghi log
-        Serial.print("Lateral movement: X=");
-        Serial.println(joystickX);
-
-        // Thực hiện di chuyển ngang
-        if (firstTripodActiveLateral)
-        {
-            moveLateral(legs, tripod1, tripod2, x, STEP_HEIGHT, stepDelay);
-            firstTripodActiveLateral = false;
-        }
-        else
-        {
-            moveLateral(legs, tripod2, tripod1, x, STEP_HEIGHT, stepDelay);
-            firstTripodActiveLateral = true;
+            firstTripodActive = true;
         }
     }
 }
@@ -1518,20 +1495,23 @@ void loop()
     // testJoystickSimulation();
 }
 
-void createLegTrajectory(float t, float& x, float& y, float& z) {
+void createLegTrajectory(float t, float& x, float& y, float& z, float targetY = -150.0f) {
     // t: tham số từ 0.0 đến 1.0 (tiến trình của chuyển động)
-    // Quỹ đạo hình bán nguyệt khi nhấc chân
+    // targetY: vị trí Y mục tiêu (âm = tiến, dương = lùi)
     
     const float HOME_X = 198.5f;
     const float HOME_Y = 0.0f; 
     const float HOME_Z = -50.1f;
     
-    const float STRIDE_LENGTH = 150.0f;  // Độ dài bước chân
+    const float STRIDE_LENGTH = abs(targetY);  // Độ dài bước chân dựa trên targetY
     const float LIFT_HEIGHT = 56.29f;   // Độ cao nhấc chân tối đa
     const float X_RETRACTION = 19.06f;  // Mức thu chân vào khi nhấc
     
+    // Xác định hướng di chuyển (1 = tiến, -1 = lùi)
+    float direction = (targetY < 0) ? 1.0f : -1.0f;
+    
     if (t < 0.5f) {
-        // Nửa đầu: Nhấc chân lên và di chuyển về phía trước
+        // Nửa đầu: Nhấc chân lên và di chuyển về hướng mục tiêu
         float phase = t * 2.0f; // 0 -> 1
         
         // Quỹ đạo hình sin cho Z (nhấc lên)
@@ -1540,19 +1520,19 @@ void createLegTrajectory(float t, float& x, float& y, float& z) {
         // X co vào khi nhấc lên cao nhất, sau đó duỗi ra
         float xFactor = sin(phase * M_PI);
         
-        // Y di chuyển tiến tới mục tiêu
+        // Y di chuyển theo hướng mục tiêu
         float yFactor = phase;
         
         x = HOME_X - X_RETRACTION * xFactor;
-        y = HOME_Y - STRIDE_LENGTH * yFactor;
+        y = HOME_Y + direction * STRIDE_LENGTH * yFactor;
         z = HOME_Z + LIFT_HEIGHT * liftFactor;
     } else {
         // Nửa sau: Hạ chân xuống và di chuyển thân robot
         float phase = (t - 0.5f) * 2.0f; // 0 -> 1
         
-        // Chân đã ở phía trước, giờ kéo thân robot tiến lên
+        // Chân đã ở vị trí mục tiêu, giờ kéo thân robot theo
         x = HOME_X - X_RETRACTION * (1.0f - phase);
-        y = HOME_Y - STRIDE_LENGTH * (1.0f - phase);
+        y = HOME_Y + direction * STRIDE_LENGTH * (1.0f - phase);
         z = HOME_Z; // Chân đã được hạ xuống
     }
 }
