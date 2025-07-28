@@ -10,16 +10,17 @@ struct Vec3 {
     float x, y, z;
 };
 
+
 class Kinematics {
 public:
     static constexpr size_t NUM_LEGS = 6;
 
-    Kinematics(float coxa_length, float femur_length, float tibia_length);
-    std::array<float, 3> computeIK(const Vec3& foot_pos) const;
-    std::array<std::array<float, 3>, NUM_LEGS> computeAllIK(const std::array<Vec3, NUM_LEGS>& target_positions) const;
+    // Forward Kinematics
+    static void computeFK(int legId, float coxaAngle, float femurAngle, float tibiaAngle, float& x, float& y, float& z);
+    static void computeFKArray(int legId, float coxaAngle, float femurAngle, float tibiaAngle);
 
-private:
-    float l1, l2, l3;
+    // Inverse Kinematics
+    static bool computeIK(int leg_id, float x, float y, float z, float& coxa_angle, float& femur_angle, float& tibia_angle, bool elbow_up = false);
 };
 
 #endif // KINEMATICS_HPP

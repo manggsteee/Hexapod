@@ -1,82 +1,90 @@
 #include "gait_controller.hpp"
-#include <cmath>
+#include "leg.hpp"
+#include "trajectory.hpp"
+#include <Arduino.h>
 
-GaitController::GaitController(GaitType type, float step_height, float step_length)
-    : gait_type(type)
-    , current_mode(Mode::STAND)
-    , current_direction(Direction::FORWARD)
-    , hexapod(nullptr)
-    , time(0.0f)
-    , step_height(step_height)
-    , step_length(step_length) {
-    positions.fill(Vec3{0, 0, 0});
-}
+GaitController::GaitController() {}
 
-void GaitController::attachHexapod(Hexapod* hexapod) {
-    this->hexapod = hexapod;
-}
-
-void GaitController::setMode(Mode mode) {
-    current_mode = mode;
-}
-
-void GaitController::setDirection(Direction dir) {
-    current_direction = dir;
-}
-
-void GaitController::update(float time_delta) {
-    if (!hexapod || current_mode == Mode::STAND) {
-        positions.fill(Vec3{0, 0, 0});
-        return;
-    }
-
-    time += time_delta;
+void GaitController::moveDirection(Leg legs[], int tripod[], float targetY, int stepDelay)
+{
+    const int UPDATE_INTERVAL = 15;
+    const int STEPS = stepDelay / UPDATE_INTERVAL;
     
-    switch (gait_type) {
-        case GaitType::TRIPOD:
-            updateTripod(time);
-            break;
-        case GaitType::WAVE:
-            updateWave(time);
-            break;
-    }
-}
-
-std::array<Vec3, Kinematics::NUM_LEGS> GaitController::getTargetPositions() const {
-    return positions;
-}
-
-void GaitController::updateTripod(float t) {
-    static const float PI = static_cast<float>(M_PI);
-    
-    float phase[6] = {0.0f, 0.5f, 0.0f, 0.5f, 0.0f, 0.5f};
-    for (size_t i = 0; i < positions.size(); ++i) {
-        float local_t = fmod(t + phase[i], 1.0f);
-        if (local_t < 0.5f) {
-            // Convert all expressions to float explicitly
-            float x = step_length * (local_t - 0.25f) * 4.0f;
-            float z = -step_height * std::sin(local_t * PI);
-            positions[i] = {x, 0.0f, z};
-        } else {
-            float x = step_length * (local_t - 0.75f) * 4.0f;
-            positions[i] = {x, 0.0f, 0.0f};
+    // === TRIPOD MOVEMENT ===
+    for (int step = 0; step < STEPS; step++) {
+        float t = (float)step / STEPS;
+        
+        for (int i = 0; i < 3; i++) {
+            float x, y, z;
+            Trajectory::createLegTrajectory(t, x, y, z, targetY);
+            legs[tripod[i]].setTargetPosition(x, y, z, t < 0.4f);
+            legs[tripod[i]].update();
         }
+        
+        delay(UPDATE_INTERVAL);
     }
 }
 
-void GaitController::updateWave(float t) {
-    static const float PI = static_cast<float>(M_PI);
-    float period = 1.2f;
-    
-    for (size_t i = 0; i < positions.size(); ++i) {
-        float phase = fmod(t + i * (period / 6.0f), period) / period;
-        if (phase < 0.5f) {
-            float x = step_length * (phase - 0.25f) * 4.0f;
-            float z = -step_height * std::sin(phase * PI);
-            positions[i] = {x, 0.0f, z};
-        } else {
-            float x = step_length * (phase - 0.75f) * 4.0f;
-            positions[i] = {x, 0.0f, 0.0f};
+void GaitController::turnRobot(Leg legs[], int tripod1[], int tripod2[], float turnFactor, int stepDelay, bool useInterpolation) {
+    const int UPDATE_INTERVAL = 10;
+    const float TURN_STRIDE = 100.0f;
+    const float STEP_HEIGHT = 270.0f;
+    const float BASE_X = 198.5f;
+
+    bool isTurningRight = (turnFactor > 0);
+    float magnitude = min(abs(turnFactor), 1.0f);
+    float offsetRight = isTurningRight ? -TURN_STRIDE * magnitude : TURN_STRIDE * magnitude;
+    float offsetLeft = -offsetRight;
+
+    // Step 1: Tripod 1 UP
+    for (int i = 0; i < 3; i++) {
+        legs[tripod1[i]].setTargetPosition(BASE_X, 0.0f, STEP_HEIGHT);
+        legs[tripod1[i]].update();
+    }
+    if (useInterpolation) {
+        for (int t = 0; t < stepDelay; t += UPDATE_INTERVAL) {
+            delay(UPDATE_INTERVAL);
         }
+    } else {
+        delay(stepDelay);
+    }
+
+    // Step 2: Tripod 1 ROTATE
+    for (int i = 0; i < 3; i++) {
+        int legId = tripod1[i];
+        bool isRightLeg = (legId < 3);
+        float yOffset = isRightLeg ? offsetRight : offsetLeft;
+        legs[legId].setTargetPosition(BASE_X, yOffset, STEP_HEIGHT);
+        legs[legId].update();
+    }
+    if (useInterpolation) {
+        for (int t = 0; t < stepDelay; t += UPDATE_INTERVAL) {
+            delay(UPDATE_INTERVAL);
+        }
+    } else {
+        delay(stepDelay);
+    }
+
+    // Step 3: Tripod 1 DOWN
+    for (int i = 0; i < 3; i++) {
+        int legId = tripod1[i];
+        bool isRightLeg = (legId < 3);
+        float yOffset = isRightLeg ? offsetRight : offsetLeft;
+        legs[legId].setTargetPosition(BASE_X, yOffset, 0.0f);
+        legs[legId].update();
+    }
+    if (useInterpolation) {
+        for (int t = 0; t < stepDelay; t += UPDATE_INTERVAL) {
+            delay(UPDATE_INTERVAL);
+        }
+    } else {
+        delay(stepDelay);
+    }
+
+    // Step 4: Tripod 1 BACKWARD (body moves forward)
+    for (int i = 0; i < 3; i++) {
+        int legId = tripod1[i];
+        legs[legId].setTargetPosition(BASE_X, 0.0f, 0.0f);
+        legs[legId].update();
     }
 }

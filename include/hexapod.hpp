@@ -20,6 +20,8 @@ public:
     void update();
 
     void goHome();
+
+    void moveWithJoystick(float joystickX, float joystickY, bool continuous);
     
 private:
     // Sử dụng std::vector và std::move để khởi tạo danh sách các chân

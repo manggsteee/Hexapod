@@ -2,7 +2,7 @@
 #include <Wire.h>
 #include <Adafruit_PWMServoDriver.h>
 
-// Cấu hình cho servo (giữ nguyên)
+// Cấu hình cho servo 
 #define SERVOMIN  150
 #define SERVOMAX  600
 #define SERVO_FREQ 50
@@ -42,15 +42,3 @@ void ServoController::setAngle(int pca_id, int channel, float angle) {
         pwm_driver2.setPWM(channel, 0, pulse_length);
     }
 }
-
-/**
- * LƯU Ý QUAN TRỌNG:
- * Bạn cũng cần cập nhật file 'include/servo_controller.hpp' để thay đổi
- * chữ ký của hàm setAngle.
- *
- * Thay đổi dòng:
- * static void setAngle(int channel, float angle);
- *
- * Thành dòng:
- * static void setAngle(int pca_id, int channel, float angle);
- */

@@ -1,5 +1,6 @@
 #include "leg.hpp"
 #include "servo_controller.hpp"
+#include "kinematics.hpp" // Add this line to include the Kinematics class or namespace
 #include <Arduino.h>
 #include <cmath>
 #include <cstdio>
@@ -72,107 +73,17 @@ void Leg::setTargetPosition(float x, float y, float z, bool elbow_up)
 
 void Leg::computeIK(bool elbow_up)
 {
-    Serial.print("IK Input - Leg ");
-    Serial.print(leg_id);
-    Serial.print(": x=");
-    Serial.print(target_x);
-    Serial.print(", y=");
-    Serial.print(target_y);
-    Serial.print(", z=");
-    Serial.println(target_z);
-
-    // === KIỂM TRA INPUT HỢP LỆ ===
-    if (isnan(target_x) || isnan(target_y) || isnan(target_z))
-    {
-        Serial.println("ERROR: Invalid input coordinates");
-        return;
-    }
-
-    // === BƯỚC 1: COXA ANGLE ===
-    coxa_angle = atan2(target_y, target_x) * (180.0f / M_PI);
-
-    // === BƯỚC 2: TÍNH KHOẢNG CÁCH TRONG MẶT PHẲNG 2D ===
-    float horizontal_dist = sqrt(target_x * target_x + target_y * target_y) - COXA_LENGTH;
-    float vertical_dist = target_z;
-    float dist = sqrt(horizontal_dist * horizontal_dist + vertical_dist * vertical_dist);
-
-    Serial.print("Intermediate: horizontal_dist=");
-    Serial.print(horizontal_dist);
-    Serial.print(", vertical_dist=");
-    Serial.print(vertical_dist);
-    Serial.print(", dist=");
-    Serial.println(dist);
-
-    // === KIỂM TRA ĐIỀU KIỆN TỒN TẠI NGHIỆM ===
-    float max_reach = FEMUR_LENGTH + TIBIA_LENGTH;
-    if (dist > max_reach)
-    {
-        dist = max_reach - 1.0f; // Giới hạn khoảng cách tối đa
-        Serial.println("WARNING: Target out of reach, adjusting distance");
-    }
-    
-
-    // === TÍNH TOÁN IK ===
-    float a1 = atan2(-vertical_dist, horizontal_dist);
-
-    float cos_a2 = (FEMUR_LENGTH * FEMUR_LENGTH + dist * dist - TIBIA_LENGTH * TIBIA_LENGTH) /
-                   (2 * FEMUR_LENGTH * dist);
-
-    // Kiểm tra validity trước khi clamp
-    if (cos_a2 < -1.00f || cos_a2 > 1.00f)
-    {
-        Serial.print("WARNING: cos_a2 out of range: ");
-        Serial.println(cos_a2);
-    }
-    cos_a2 = std::max(-1.0f, std::min(1.0f, cos_a2));
-
-    bool effective_elbow_up;
-    if (leg_id < 3) { // Chân phải (0, 1, 2)
-        effective_elbow_up = !elbow_up; // Đảo ngược elbow_up
-    } else { // Chân trái (3, 4, 5)
-        effective_elbow_up = elbow_up;
-    }
-
-    float a2;
-    if (elbow_up) {
-        a2 = -acos(cos_a2); // Luôn chọn góc âm cho elbow up
-    } else {
-        a2 = acos(cos_a2);  // Luôn chọn góc dương cho elbow down
-    }
-    femur_angle = (a1 + a2) * 180.0f / M_PI;
-
-    float cos_tibia = (FEMUR_LENGTH * FEMUR_LENGTH + TIBIA_LENGTH * TIBIA_LENGTH - dist * dist) /
-                      (2 * FEMUR_LENGTH * TIBIA_LENGTH);
-
-    
-    cos_tibia = std::max(-1.0f, std::min(1.0f, cos_tibia));
-    float tibia_angle_rad = acos(cos_tibia);
-    // Thay đổi phương pháp tính tibia_angle để phù hợp với elbow up
-    if (a2 < 0) { // elbow up
-        tibia_angle = (180.0f - tibia_angle_rad * 180.0f / M_PI); // Giá trị dương, góc hẹp
-    } else { // elbow down
-        tibia_angle = -(180.0f - tibia_angle_rad * 180.0f / M_PI); // Giá trị âm, góc rộng
-    }
-    
-    
-    // Hiệu chỉnh cuối cùng nếu tibia_angle vẫn là 0
-    if (abs(tibia_angle) < 0.01f) {
-        // Tibia đối nghịch với femur để giữ chân thẳng
-        tibia_angle = -femur_angle;
-        Serial.print("Corrected tibia angle: ");
-        Serial.println(tibia_angle);
-    }
-    
-    // Giới hạn góc tibia trong phạm vi hợp lý
-    tibia_angle = std::max(-90.0f, std::min(90.0f, tibia_angle));
-
-    // === KIỂM TRA KẾT QUẢ HỢP LỆ ===
-    if (isnan(femur_angle) || isnan(tibia_angle))
-    {
-        Serial.println("ERROR: NaN result in IK calculation");
-        femur_angle = 0.0f;
-        tibia_angle = 0.0f;
-    }
+    // Sử dụng Kinematics::computeIK để tính toán
+    Kinematics::computeIK(
+        leg_id,
+        target_x,
+        target_y,
+        target_z,
+        coxa_angle,
+        femur_angle,
+        tibia_angle,
+        elbow_up
+    );
 }
 
 void Leg::update()

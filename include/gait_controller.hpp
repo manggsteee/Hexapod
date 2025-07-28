@@ -1,36 +1,19 @@
 #ifndef GAIT_CONTROLLER_HPP
 #define GAIT_CONTROLLER_HPP
 
-#include "kinematics.hpp"
-#include "hexapod.hpp"
-#include <array>
+#include "leg.hpp"
+
 
 class GaitController {
 public:
-    enum class Mode { STAND, WALK };
-    enum class Direction { FORWARD, BACKWARD, LEFT, RIGHT };
-    enum class GaitType { TRIPOD, WAVE };
+// Hàm điều khiển chuyển động tiến/lùi cho tripod
+static void moveDirection(Leg legs[], int tripod[], float targetY, int stepDelay = 200);
 
-    explicit GaitController(GaitType type = GaitType::TRIPOD, float step_height = 30.0f, float step_length = 50.0f);
-    
-    void attachHexapod(Hexapod* hexapod);
-    void setMode(Mode mode);
-    void setDirection(Direction dir);
-    void update(float time_delta);
-    std::array<Vec3, Kinematics::NUM_LEGS> getTargetPositions() const;
-
+// Hàm điều khiển chuyển động quay (rẽ trái/phải)
+static void turnRobot(Leg legs[], int tripod1[], int tripod2[], float turnFactor, int stepDelay = 200, bool useInterpolation = true);
 private:
-    GaitType gait_type;
-    Mode current_mode;
-    Direction current_direction;
-    Hexapod* hexapod;
-    float time;
-    float step_height;
-    float step_length;
-    std::array<Vec3, Kinematics::NUM_LEGS> positions;
-
-    void updateTripod(float t);
-    void updateWave(float t);
+    // Hàm khởi tạo
+    GaitController();
 };
 
 #endif // GAIT_CONTROLLER_HPP

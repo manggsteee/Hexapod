@@ -1,8 +1,8 @@
 #include "hexapod.hpp"
 #include "servo_controller.hpp"
-#include <Arduino.h> // Cần thiết cho hàm delay()
+#include "gait_controller.hpp"
+#include <Arduino.h> 
 
-// Cấu trúc LEG_SERVO_CHANNELS giữ nguyên như bạn đã định nghĩa
 const int LEG_SERVO_CHANNELS[Kinematics::NUM_LEGS][4] = {
     // --- Các chân trên Mạch #1 (PCA_ID = 0) ---
     {0, 0, 1, 2},    // Chân 0 (phải-trước)
@@ -17,46 +17,6 @@ const int LEG_SERVO_CHANNELS[Kinematics::NUM_LEGS][4] = {
 };
 
 Hexapod::Hexapod() {}
-
-// void Hexapod::goHome() {
-//     Serial.println("Going to home position...");
-    
-//     // Góc home đã được điều chỉnh từ manual calibration
-//     const float homeAngles[6][3] = {
-//         {126.00f, 159.00f, 90.00f}, // Leg 0 - [Coxa, Femur, Tibia]
-//         {99.00f, 163.00f, 79.00f},  // Leg 1
-//         {85.00f, 159.00f, 80.00f},  // Leg 2
-//         {80.00f, 69.00f, 97.00f},   // Leg 3
-//         {100.00f, 19.00f, 78.00f},  // Leg 4
-//         {96.00f, 34.00f, 106.00f}   // Leg 5
-//     };
-    
-//     // Áp dụng góc home cho tất cả các chân
-//     for (int leg = 0; leg < 6; leg++) {
-//         int pca_id = LEG_SERVO_CHANNELS[leg][0];
-        
-//         // Coxa
-//         int coxa_channel = LEG_SERVO_CHANNELS[leg][3]; // Channel 2
-//         ServoController::setAngle(pca_id, coxa_channel, homeAngles[leg][0]);
-//         delay(50);
-        
-//         // Femur  
-//         int femur_channel = LEG_SERVO_CHANNELS[leg][2]; // Channel 1
-//         ServoController::setAngle(pca_id, femur_channel, homeAngles[leg][1]);
-//         delay(50);
-        
-//         // Tibia
-//         int tibia_channel = LEG_SERVO_CHANNELS[leg][1]; // Channel 0
-//         ServoController::setAngle(pca_id, tibia_channel, homeAngles[leg][2]);
-//         delay(50);
-        
-//         Serial.print("Leg ");
-//         Serial.print(leg);
-//         Serial.println(" home position set");
-//     }
-    
-//     Serial.println("Home position completed!");
-// }
 
 void Hexapod::setupLegs() {
     // --- Phần khởi tạo chân giữ nguyên ---
@@ -134,4 +94,118 @@ void Hexapod::goHome() {
     }
     
     Serial.println("Home position completed using IK!");
+}
+
+void Hexapod::moveWithJoystick(float joystickX, float joystickY, bool continuous = false)
+{
+    // Áp dụng deadzone
+    const float DEADZONE = 0.1f;
+    if (abs(joystickX) < DEADZONE)
+        joystickX = 0.0f;
+    if (abs(joystickY) < DEADZONE)
+        joystickY = 0.0f;
+
+    // Bỏ qua nếu joystick ở vùng deadzone
+    if (joystickX == 0.0f && joystickY == 0.0f)
+    {
+        if (!continuous)
+        {
+            goHome();
+        }
+        return;
+    }
+
+    // Tạo chân cho hexapod
+    static Leg legs[6] = {
+        Leg(0, 0, 2, 1, 0),  // Leg 0
+        Leg(1, 0, 6, 5, 4),  // Leg 1
+        Leg(2, 0, 10, 9, 8), // Leg 2
+        Leg(3, 1, 2, 1, 0),  // Leg 3
+        Leg(4, 1, 6, 5, 4),  // Leg 4
+        Leg(5, 1, 10, 9, 8)  // Leg 5
+    };
+
+    // Định nghĩa tripods
+    static int tripod1[] = {0, 2, 4};
+    static int tripod2[] = {1, 3, 5};
+
+    // Chuyển đổi giá trị joystick thành tham số di chuyển
+    const float STRIDE_LENGTH = 70.0f; // Bước chân tối đa (mm)
+
+    // Điều chỉnh tốc độ dựa trên mức độ nghiêng của joystick
+    float speedFactor = max(abs(joystickX), abs(joystickY));
+    float minDelay = 200; // Tốc độ tối đa
+    float maxDelay = 400; // Tốc độ tối thiểu
+    float baseStepDelay = maxDelay - speedFactor * (maxDelay - minDelay);
+
+    // Xác định hướng di chuyển chủ đạo
+    float absX = abs(joystickX);
+    float absY = abs(joystickY);
+    
+    // Biến static cho việc luân phiên tripod
+    static bool firstTripodActive = true;
+
+    // Debug
+    Serial.print("Speed: ");
+    Serial.print(speedFactor);
+    Serial.print(", Delay: ");
+    Serial.println(baseStepDelay);
+
+    // Xác định chế độ di chuyển: chỉ có 2 chế độ
+    // 0: tiến/lùi, 1: rẽ trái/phải
+    int moveMode;
+    
+    if (absY > absX) {
+        moveMode = 0; // Tiến/lùi (Y dominant)
+    } else {
+        moveMode = 1; // Rẽ trái/phải (X dominant)
+    }
+
+    // Chế độ tiến/lùi
+    if (moveMode == 0)
+    {
+        // Chế độ tiến/lùi
+        float y = -joystickY * STRIDE_LENGTH; // Ngược dấu: joystick -Y = tiến tới
+        float stepDelay = baseStepDelay;
+
+        // Ghi log
+        Serial.print("Forward/Backward: Y=");
+        Serial.println(joystickY);
+
+        // Thực hiện di chuyển tiến/lùi
+        if (firstTripodActive)
+        {
+            GaitController::moveDirection(legs, tripod1, y, stepDelay);
+            firstTripodActive = false;
+            GaitController::moveDirection(legs, tripod1, y, stepDelay);
+        }
+        else
+        {
+            GaitController::moveDirection(legs, tripod2, y, stepDelay);
+            firstTripodActive = true;
+        }
+    }
+    // Chế độ rẽ trái/phải
+    else if (moveMode == 1)
+    {
+        // Chế độ rẽ (quay)
+        float turnFactor = joystickX; // -1 to 1
+        float stepDelay = baseStepDelay;
+
+        // Ghi log
+        Serial.print("Turning: X=");
+        Serial.println(joystickX);
+
+        // Thực hiện chuyển động quay
+        if (firstTripodActive)
+        {
+            GaitController::turnRobot(legs, tripod1, tripod2, turnFactor, stepDelay, true);
+            firstTripodActive = false;
+        }
+        else
+        {
+            GaitController::turnRobot(legs, tripod2, tripod1, turnFactor, stepDelay, true);
+            firstTripodActive = true;
+        }
+    }
 }
